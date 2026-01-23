@@ -111,6 +111,28 @@ rollout 阶段可达 >1.5× 的加速；并指出随着训练后期输出更长�
 * FP16 在标记和序列级别上显著降低了训练-推理不匹配。
 * 从 BF16 切换到 FP16 可以稳定和延长 RL 训练，FP16 的性能优于所有 BF16 基线。
 
+3. rollout 校准小结
+
+| 维度 | Decoupled mode | Bypass mode | Bypass + Policy Gradient mode |
+|------|------------------|--------------|-------------------------------|
+| 策略数量 | 3 个：π_rollout, π_old, π_θ | 2 个：π_rollout = π_old, π_θ | 2 个：π_rollout, π_θ |
+| rollout 策略 | π_rollout | π_rollout (= π_old) | π_rollout |
+| 是否存在 π_old anchor | ✅ 有（独立存在） | ✅ 有（等于 rollout） | ❌ 没有 |
+| 是否使用 PPO clipping | ✅ 使用 | ✅ 使用 | ❌ 不使用 |
+| 本质算法 | 标准 PPO（off-policy 扩展） | 标准 PPO（近似 on-policy） | Off-policy Policy Gradient |
+| 理论稳定性 | ⭐⭐⭐⭐ 很高 | ⭐⭐⭐ 高 | ⭐⭐ 较低 |
+| 更新是否受约束 | ✅ 强约束（clipping） | ✅ 强约束（clipping） | ❌ 基本无约束 |
+| 是否容易大步更新 | ❌ 不容易 | ❌ 不容易 | ✅ 很容易 |
+| 方差水平 | 中 | 低 | 高 |
+| 工程复杂度 | 高（维护三策略+IS） | 低 | 中 |
+
+
+
+
+
+
+
+
 
 
 
