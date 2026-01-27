@@ -87,46 +87,7 @@ rollout 阶段可达 >1.5× 的加速；并指出随着训练后期输出更长�
 
 在 rollout 阶段实现了 33% 的加速，在 training 阶段实现了 41% 的加速，相较于 BF16 训练，端到端加速了 16% ，同时在所有设置中保持稳定的收敛，导致的精度下降可忽略不计。
 
-# E. 低精度 RL 训推经验贴总结
-
-1. vLLM 对低精度格式的支持与使用方式
-
-支持的低精度类型：vLLM 已支持多种 8 比特低精度推理格式，包括 FP8（8 位浮点）和 INT8 量化模式，覆盖纯权重量化及权重 + 激活同时量化。
-
-使用方式：vLLM 提供了**离线量化**和**在线量化**两种工作流。
-
-对于离线量化，推荐使用 llm-compressor 工具对模型进行一次性量化，然后加载量化后的模型权重。
-
-对于在线动态量化，vLLM 支持在推理引擎中对加载的模型实时量化。用户可通过环境变量或 API 参数开启。例如，在 FlashRL 中使用环境变量控制 vLLM 在线量化：export FLASHRL_CONFIG=fp8_vllm 开启 FP8 在线量化，或 FLASHRL_CONFIG=int8 开启 INT8 量化。FP8 动态量化无需校准且硬件友好，是首选方案；INT8 则需结合校准或 QAT 技术，在推理引擎和训练框架间同步更新量化权重。
-
-混合精度策略如 W8A16，这种权重量化方法降低了一半模型内存，但计算时需将权重反量化为 FP16 参与乘法，因而在计算密集场景收益有限。
-
-2. 利用 FP16 克服训练-推理不匹配问题  https://www.emergentmind.com/papers/2510.26788#related-papers
-
-训练策略和推理策略之间的数值不匹配根本原因在于浮点精度本身。广泛采用的 BF16 浮点数虽然动态范围大，但会引入较大的舍入误差，从而破坏训练和推理之间的一致性。**改回 FP16 浮点数即可有效消除这种不匹配**。
-
-实验结论：
-
-* 在不同设置下 BF16 和 FP16 之间的训练奖励比较，表明 FP16 具有更优异的稳定性和收敛性。
-* FP16 在标记和序列级别上显著降低了训练-推理不匹配。
-* 从 BF16 切换到 FP16 可以稳定和延长 RL 训练，FP16 的性能优于所有 BF16 基线。
-
-3. rollout 校准小结
-
-| 维度 | Decoupled mode | Bypass mode | Bypass + Policy Gradient mode |
-|------|------------------|--------------|-------------------------------|
-| 策略数量 | 3 个：π_rollout, π_old, π_θ | 2 个：π_rollout = π_old, π_θ | 2 个：π_rollout, π_θ |
-| rollout 策略 | π_rollout | π_rollout (= π_old) | π_rollout |
-| 是否存在 π_old anchor | ✅ 有（独立存在） | ✅ 有（等于 rollout） | ❌ 没有 |
-| 是否使用 PPO clipping | ✅ 使用 | ✅ 使用 | ❌ 不使用 |
-| 本质算法 | 标准 PPO（off-policy 扩展） | 标准 PPO（近似 on-policy） | Off-policy Policy Gradient |
-| 理论稳定性 | ⭐⭐⭐⭐ 很高 | ⭐⭐⭐ 高 | ⭐⭐ 较低 |
-| 更新是否受约束 | ✅ 强约束（clipping） | ✅ 强约束（clipping） | ❌ 基本无约束 |
-| 是否容易大步更新 | ❌ 不容易 | ❌ 不容易 | ✅ 很容易 |
-| 方差水平 | 中 | 低 | 高 |
-| 工程复杂度 | 高（维护三策略+IS） | 低 | 中 |
-
-# F. On the Rollout-Training Mismatch in Modern RL Systems
+# E. On the Rollout-Training Mismatch in Modern RL Systems
 
 论文：https://openreview.net/pdf?id=8MHqvb4lK9
 
@@ -134,7 +95,7 @@ rollout 阶段可达 >1.5× 的加速；并指出随着训练后期输出更长�
 
 解决思路：使用 截断重要性采样 (Truncated Importance Sampling, TIS) 来修正 rollout distribution 与训练 distribution 之间的偏差。
 
-# G. RILQ （“Rank‑Insensitive”（秩不敏感），关于量化误差）
+# F. RILQ （“Rank‑Insensitive”（秩不敏感），关于量化误差）
 
 论文：https://arxiv.org/pdf/2412.01129
 
@@ -178,7 +139,7 @@ RILQ 根据全局模型级损失来对抗高秩误差，与 RL 中通过 rollout
 * 全局回归修正：类似于回归损失，全局回归修正通过对整个任务的预测误差进行最优化，使得低精度推理中的误差不会被局部误差放大，从而在整个策略路径中进行全局修正。
 * 自适应误差反馈机制：例如在强化学习中，可以通过自适应量化噪声（AQN）控制整体误差，而不是逐层修正。这种方法通过动态调整误差的补偿系数，使得整个模型在多次rollout中都能够适应低精度带来的误差。​
 
-# H. What Makes Low-Bit Quantization-Aware Training Work for Reasoning LLMs?
+# G. What Makes Low-Bit Quantization-Aware Training Work for Reasoning LLMs?
 
 ### 背景
 
@@ -197,6 +158,45 @@ RILQ 根据全局模型级损失来对抗高秩误差，与 RL 中通过 rollout
 * 使用 GPTQ 进行初始化能够显著提高 QAT 的训练效率，并加速收敛。实验结果表明，使用 GPTQ 初始化的模型比 RTN（对称量化基准）初始化的模型具有更高的初始精度和更快的收敛速度，从而减少了 QAT 训练的计算开销。
 * 需要通过合适的冷启动机制（如使用 KD 初始化）来避免训练崩溃。
 * 当训练数据与量化校准数据的领域一致时，QAT 模型能够更快收敛，并且最终精度更高。
+
+# H. 低精度 RL 训推经验贴总结
+
+1. vLLM 对低精度格式的支持与使用方式
+
+支持的低精度类型：vLLM 已支持多种 8 比特低精度推理格式，包括 FP8（8 位浮点）和 INT8 量化模式，覆盖纯权重量化及权重 + 激活同时量化。
+
+使用方式：vLLM 提供了**离线量化**和**在线量化**两种工作流。
+
+对于离线量化，推荐使用 llm-compressor 工具对模型进行一次性量化，然后加载量化后的模型权重。
+
+对于在线动态量化，vLLM 支持在推理引擎中对加载的模型实时量化。用户可通过环境变量或 API 参数开启。例如，在 FlashRL 中使用环境变量控制 vLLM 在线量化：export FLASHRL_CONFIG=fp8_vllm 开启 FP8 在线量化，或 FLASHRL_CONFIG=int8 开启 INT8 量化。FP8 动态量化无需校准且硬件友好，是首选方案；INT8 则需结合校准或 QAT 技术，在推理引擎和训练框架间同步更新量化权重。
+
+混合精度策略如 W8A16，这种权重量化方法降低了一半模型内存，但计算时需将权重反量化为 FP16 参与乘法，因而在计算密集场景收益有限。
+
+2. 利用 FP16 克服训练-推理不匹配问题  https://www.emergentmind.com/papers/2510.26788#related-papers
+
+训练策略和推理策略之间的数值不匹配根本原因在于浮点精度本身。广泛采用的 BF16 浮点数虽然动态范围大，但会引入较大的舍入误差，从而破坏训练和推理之间的一致性。**改回 FP16 浮点数即可有效消除这种不匹配**。
+
+实验结论：
+
+* 在不同设置下 BF16 和 FP16 之间的训练奖励比较，表明 FP16 具有更优异的稳定性和收敛性。
+* FP16 在标记和序列级别上显著降低了训练-推理不匹配。
+* 从 BF16 切换到 FP16 可以稳定和延长 RL 训练，FP16 的性能优于所有 BF16 基线。
+
+3. rollout 校准小结
+
+| 维度 | Decoupled mode | Bypass mode | Bypass + Policy Gradient mode |
+|------|------------------|--------------|-------------------------------|
+| 策略数量 | 3 个：π_rollout, π_old, π_θ | 2 个：π_rollout = π_old, π_θ | 2 个：π_rollout, π_θ |
+| rollout 策略 | π_rollout | π_rollout (= π_old) | π_rollout |
+| 是否存在 π_old anchor | ✅ 有（独立存在） | ✅ 有（等于 rollout） | ❌ 没有 |
+| 是否使用 PPO clipping | ✅ 使用 | ✅ 使用 | ❌ 不使用 |
+| 本质算法 | 标准 PPO（off-policy 扩展） | 标准 PPO（近似 on-policy） | Off-policy Policy Gradient |
+| 理论稳定性 | ⭐⭐⭐⭐ 很高 | ⭐⭐⭐ 高 | ⭐⭐ 较低 |
+| 更新是否受约束 | ✅ 强约束（clipping） | ✅ 强约束（clipping） | ❌ 基本无约束 |
+| 是否容易大步更新 | ❌ 不容易 | ❌ 不容易 | ✅ 很容易 |
+| 方差水平 | 中 | 低 | 高 |
+| 工程复杂度 | 高（维护三策略+IS） | 低 | 中 |
 
 
 
